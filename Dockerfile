@@ -1,68 +1,49 @@
 # ──────────────────────────────────────────────────────────────
-#  Nayalogic OS — Dockerfile for Back4App / Container Hosting
+#  Nayalogic OS — Dockerfile for Back4App Containers
 # ──────────────────────────────────────────────────────────────
-#  Multi-stage build: smaller final image, faster deploys.
-#  Uses npm install (not npm ci) to handle lock file mismatches.
-#  Memory-optimized for free-tier container hosts.
+#  Optimized for Back4App free plan:
+#    - Single-stage build (more reliable, less OOM risk)
+#    - Uses npm install (handles lock file mismatches)
+#    - Memory-limited Node.js during build
+#    - Exposes TCP port 3000 (Back4App requirement)
 # ──────────────────────────────────────────────────────────────
 
-# ---------- Stage 1: Dependencies ----------
-FROM node:20-alpine AS deps
+FROM node:20-alpine
+
 WORKDIR /app
 
-# Copy package files + prisma schema first (better layer caching)
-# prisma/ is needed because postinstall runs "prisma generate"
-COPY package.json package-lock.json ./
-COPY prisma ./prisma
-RUN npm install --omit=dev
+# Install OS-level compat libraries needed by Next.js / sharp
+RUN apk add --no-cache libc6-compat
 
-# ---------- Stage 2: Build ----------
-FROM node:20-alpine AS builder
-WORKDIR /app
-
-# Limit Node.js memory to prevent OOM on free-tier builds
+# Limit Node memory during build to prevent OOM on free plan
 ENV NODE_OPTIONS="--max-old-space-size=1536"
 
-COPY --from=deps /app/node_modules ./node_modules
+# Copy package files + prisma schema first
+# (prisma/ is required because postinstall runs "prisma generate")
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+
+# Install all dependencies
+RUN npm install
+
+# Copy all source code
 COPY . .
 
-# Generate Prisma client
+# Generate Prisma client and build Next.js
 RUN npx prisma generate
-
-# Build Next.js (output: "standalone" is set in next.config.ts)
 RUN npm run build
 
-# ---------- Stage 3: Production ----------
-FROM node:20-alpine AS runner
-WORKDIR /app
-
+# ─── Production Runtime Settings ───
 ENV NODE_ENV=production
 ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
+ENV HOSTNAME=0.0.0.0
+ENV NODE_OPTIONS=""
 
-# Limit memory in production too (free tier)
-ENV NODE_OPTIONS="--max-old-space-size=512"
+# Create directory for SQLite database
+RUN mkdir -p db
 
-# Create db directory for SQLite
-RUN mkdir -p /app/db
-
-# Copy standalone output
-COPY --from=builder /app/.next/standalone ./
-# Copy static assets & public folder
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
-
-# Copy Prisma schema for db push on first run
-COPY --from=builder /app/prisma ./prisma
-# Copy the db lib (needed by instrumentation for auto-seed)
-COPY --from=builder /app/src/lib/db.ts ./src/lib/db.ts
-# Copy instrumentation hook for auto-seed on boot
-COPY --from=builder /app/instrumentation.ts ./instrumentation.ts
-# Copy .env.example so start.js can create .env
-COPY --from=builder /app/.env.example ./.env.example
-# Copy start.js bootstrapper
-COPY --from=builder /app/start.js ./start.js
-
+# Back4App requires an exposed TCP port for traffic routing
 EXPOSE 3000
 
+# start.js handles: .env creation, prisma db push, server start
 CMD ["node", "start.js"]
