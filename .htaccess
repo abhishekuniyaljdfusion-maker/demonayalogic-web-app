@@ -1,0 +1,39 @@
+# ──────────────────────────────────────────────────────────────────────
+#  Nayalogic OS — Apache Security Rules
+# ──────────────────────────────────────────────────────────────────────
+#  Protects sensitive files from public access via the web.
+#  Hostinger's Node.js app runs behind Apache, so these rules apply.
+# ──────────────────────────────────────────────────────────────────────
+
+# Disable directory listing
+Options -Indexes
+
+# Block access to dotfiles (.env, .git, etc.)
+<FilesMatch "^\.">
+  Order allow,deny
+  Deny from all
+</FilesMatch>
+
+# Block access to database files
+<FilesMatch "\.(db|sqlite|sqlite3)$">
+  Order allow,deny
+  Deny from all
+</FilesMatch>
+
+# Block access to log files
+<FilesMatch "\.(log|pid)$">
+  Order allow,deny
+  Deny from all
+</FilesMatch>
+
+# Block access to source files (production serves compiled output only)
+<FilesMatch "\.(ts|tsx|js|jsx|mjs|json|md|sh)$">
+  Order allow,deny
+  Deny from all
+</FilesMatch>
+
+# Allow access to public/ folder contents (CSS, JS, images, etc.)
+<Directory "public">
+  Order allow,deny
+  Allow from all
+</Directory>
