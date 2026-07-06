@@ -1,0 +1,284 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  role          String    @default("EMPLOYEE")
+  phone         String?
+  avatar        String?
+  company       String?
+  designation   String?
+  bio           String?
+  isOnline      Boolean   @default(false)
+  isVerified    Boolean   @default(false)
+  plan          String?
+  planExpiry    DateTime?
+  salary        Float?
+  weeklyTarget  Float     @default(48)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  projectAssignments   ProjectAssignment[]
+  createdProjects      Project[]        @relation("ProjectCreator")
+  clientProjects       Project[]        @relation("ProjectClient")
+  tasks                Task[]
+  taskComments         TaskComment[]
+  sentMessages         Message[]         @relation("MessageSender")
+  workSubmissions      WorkSubmission[]
+  notifications        Notification[]
+  attendance           Attendance[]
+  auditLogs            AuditLog[]
+  conversationParticipants ConversationParticipant[]
+  uploadedFiles        AppFile[]
+  clientInvoices       Invoice[]         @relation("InvoiceClient")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  status      String   @default("ACTIVE")
+  priority    String   @default("MEDIUM")
+  budget      Float?
+  deadline    DateTime?
+  startDate   DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String
+  clientId    String
+
+  createdBy      User                      @relation("ProjectCreator", fields: [createdById], references: [id])
+  client         User                      @relation("ProjectClient", fields: [clientId], references: [id])
+  assignments    ProjectAssignment[]
+  tasks          Task[]
+  milestones     Milestone[]
+  reports        Report[]
+  files          AppFile[]
+  conversations  Conversation[]
+  submissions    WorkSubmission[]
+  analytics      AnalyticsData[]
+  invoices       Invoice[]
+}
+
+model ProjectAssignment {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  role      String   @default("MEMBER")
+  joinedAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("PENDING")
+  priority    String   @default("MEDIUM")
+  dueDate     DateTime?
+  hoursLogged Float    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  projectId   String
+  assigneeId  String?
+
+  project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee    User?           @relation(fields: [assigneeId], references: [id])
+  checklist   TaskChecklist[]
+  comments    TaskComment[]
+  submissions WorkSubmission[]
+}
+
+model TaskChecklist {
+  id        String  @id @default(cuid())
+  text      String
+  completed Boolean @default(false)
+  taskId    String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+  taskId    String
+  userId    String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Milestone {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("PENDING")
+  dueDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime  @updatedAt
+  projectId   String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id            String   @id @default(cuid())
+  name          String?
+  type          String   @default("DIRECT")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  projectId     String?
+  lastMessageAt DateTime?
+
+  project      Project?                  @relation(fields: [projectId], references: [id])
+  participants ConversationParticipant[]
+  messages     Message[]
+}
+
+model ConversationParticipant {
+  id             String    @id @default(cuid())
+  conversationId String
+  userId         String
+  lastReadAt     DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  content        String
+  type           String   @default("TEXT")
+  senderId       String
+  conversationId String
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  sender       User          @relation("MessageSender", fields: [senderId], references: [id])
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model WorkSubmission {
+  id          String   @id @default(cuid())
+  description String
+  hoursWorked Float
+  date        String
+  screenshot  String?
+  fileUrl     String?
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  taskId      String?
+  projectId   String
+  userId      String
+
+  task    Task?  @relation(fields: [taskId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+}
+
+model Report {
+  id          String   @id @default(cuid())
+  title       String
+  type        String   @default("DAILY")
+  content     String
+  generatedAt DateTime @default(now())
+  projectId   String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model AppFile {
+  id           String   @id @default(cuid())
+  name         String
+  type         String
+  url          String
+  size         Float?
+  mimeType     String?
+  createdAt    DateTime @default(now())
+  projectId    String
+  uploadedById String
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedBy User    @relation(fields: [uploadedById], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  title     String
+  message   String
+  type      String   @default("INFO")
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+  userId    String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Attendance {
+  id        String   @id @default(cuid())
+  date      String
+  hours     Float
+  overtime  Float    @default(0)
+  userId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  details   String?
+  ip        String?
+  createdAt DateTime @default(now())
+  userId    String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id          String   @id @default(cuid())
+  invoiceNo   String   @unique
+  amount      Float
+  status      String   @default("PENDING")
+  dueDate     DateTime
+  createdAt   DateTime @default(now())
+  projectId   String
+  clientId    String
+
+  project Project @relation(fields: [projectId], references: [id])
+  client  User    @relation("InvoiceClient", fields: [clientId], references: [id])
+}
+
+model AnalyticsData {
+  id        String   @id @default(cuid())
+  service   String
+  metric    String
+  value     Float
+  date      String
+  projectId String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([service, metric, date, projectId])
+}
