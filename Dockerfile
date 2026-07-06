@@ -1,21 +1,27 @@
 # ──────────────────────────────────────────────────────────────
-#  Nayalogic OS — Dockerfile for Hostinger Container Plan
+#  Nayalogic OS — Dockerfile for Back4App / Container Hosting
 # ──────────────────────────────────────────────────────────────
 #  Multi-stage build: smaller final image, faster deploys.
-#  Hostinger sets the PORT env var automatically.
+#  Uses npm install (not npm ci) to handle lock file mismatches.
+#  Memory-optimized for free-tier container hosts.
 # ──────────────────────────────────────────────────────────────
 
 # ---------- Stage 1: Dependencies ----------
 FROM node:20-alpine AS deps
 WORKDIR /app
 
-# Copy package files first (better layer caching)
+# Copy package files + prisma schema first (better layer caching)
+# prisma/ is needed because postinstall runs "prisma generate"
 COPY package.json package-lock.json ./
+COPY prisma ./prisma
 RUN npm install --omit=dev
 
 # ---------- Stage 2: Build ----------
 FROM node:20-alpine AS builder
 WORKDIR /app
+
+# Limit Node.js memory to prevent OOM on free-tier builds
+ENV NODE_OPTIONS="--max-old-space-size=1536"
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -33,6 +39,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+
+# Limit memory in production too (free tier)
+ENV NODE_OPTIONS="--max-old-space-size=512"
 
 # Create db directory for SQLite
 RUN mkdir -p /app/db
